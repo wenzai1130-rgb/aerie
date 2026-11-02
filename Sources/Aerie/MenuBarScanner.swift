@@ -33,7 +33,7 @@ enum MenuBarScanner {
             guard let kidsRef = element(bar, kAXChildrenAttribute),
                   let children = kidsRef as? [AXUIElement] else { continue }
             for child in children {
-                guard let pos = point(child), let size = sizeOf(child) else { continue }
+                guard let pos = point(child), let size = size(of: child) else { continue }
                 let title = string(child, kAXTitleAttribute)
                     ?? string(child, kAXDescriptionAttribute)
                     ?? ""
@@ -52,17 +52,17 @@ enum MenuBarScanner {
 
     // MARK: - AX helpers
 
-    private static func element(_ el: AXUIElement, _ attr: String) -> CFTypeRef? {
+    static func element(_ el: AXUIElement, _ attr: String) -> CFTypeRef? {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(el, attr as CFString, &value) == .success else { return nil }
         return value
     }
 
-    private static func string(_ el: AXUIElement, _ attr: String) -> String? {
+    static func string(_ el: AXUIElement, _ attr: String) -> String? {
         element(el, attr) as? String
     }
 
-    private static func point(_ el: AXUIElement) -> CGPoint? {
+    static func point(_ el: AXUIElement) -> CGPoint? {
         guard let ref = element(el, kAXPositionAttribute) else { return nil }
         let axValue = ref as! AXValue
         var p = CGPoint.zero
@@ -70,12 +70,30 @@ enum MenuBarScanner {
         return p
     }
 
-    private static func sizeOf(_ el: AXUIElement) -> CGSize? {
+    static func size(of el: AXUIElement) -> CGSize? {
         guard let ref = element(el, kAXSizeAttribute) else { return nil }
         let axValue = ref as! AXValue
         var s = CGSize.zero
         guard AXValueGetValue(axValue, .cgSize, &s) else { return nil }
         return s
+    }
+
+    /// Find the status item of process `pid` that currently sits at
+    /// `position` (top-left, within a few pixels) — used to translate
+    /// a dropped window back into its AX element.
+    static func element(at position: CGPoint, inApp pid: pid_t) -> AXUIElement? {
+        let appEl = AXUIElementCreateApplication(pid)
+        guard let barRef = element(appEl, kAXExtrasMenuBarAttribute),
+              CFGetTypeID(barRef) == AXUIElementGetTypeID() else { return nil }
+        let bar = barRef as! AXUIElement
+        guard let kidsRef = element(bar, kAXChildrenAttribute),
+              let children = kidsRef as? [AXUIElement] else { return nil }
+        for child in children {
+            if let p = point(child), abs(p.x - position.x) < 4, abs(p.y - position.y) < 4 {
+                return child
+            }
+        }
+        return nil
     }
 
     @discardableResult

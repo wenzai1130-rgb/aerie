@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isAutoRevealed = false
 
     private let watcher = BlinkWatcher()
+    private let detector = DropDetector()
     private var snapshot: [MenuBarItem] = []
     private var drawerItems: [MenuBarItem] = []
 
@@ -24,6 +25,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         BlinkWatcher.shared = watcher
         watcher.onAttention = { [weak self] in self?.autoReveal() }
         watcher.onQuiet = { [weak self] in self?.autoTuckBack() }
+
+        detector.onTuck = { [weak self] pid, el in
+            self?.tuck(pid: pid, element: el)
+        }
+        detector.start()
 
         handleItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         configureHandleButton()
@@ -67,12 +73,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func handleClicked() {
-        let type = NSApp.currentEvent?.type ?? .leftMouseUp
-        if type == .rightMouseUp {
-            showMenu()
-        } else {
-            isCollapsed ? expand() : collapse()
-        }
+        showMenu()
+    }
+
+    // MARK: - Tucking (drag onto the bird)
+
+    /// The user dropped an icon onto the bird: slide it to the far
+    /// side of the wall, then widen the wall so it disappears inside.
+    private func tuck(pid: pid_t, element: AXUIElement) {
+        let items = MenuBarScanner.allItems()
+        guard let wall = findImposter(in: items) else { return }
+        let drawer = items.filter { $0.position.x + $0.size.width <= wall.position.x + 2 }
+        let targetRight = (drawer.map { $0.position.x }.min() ?? wall.position.x) - 2
+        let size = MenuBarScanner.size(of: element) ?? CGSize(width: 30, height: 24)
+        let x = targetRight - size.width
+        _ = MenuBarScanner.setPosition(element, CGPoint(x: x, y: wall.position.y))
+        NSSound(named: "Pop")?.play()
+        refreshDrawerAndWatcher()
+        collapse()
     }
 
     // MARK: - Drawer
@@ -172,6 +190,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showMenu() {
         let m = NSMenu()
 
+        let drawer = drawerItems
+        if drawer.isEmpty {
+            let hint = NSMenuItem(title: "抽屉是空的 — 按住 ⌘ 把图标拖到小鸟上即可收藏",
+                                  action: nil, keyEquivalent: "")
+            hint.isEnabled = false
+            m.addItem(hint)
+        } else {
+            let title = NSMenuItem(title: "🐦 巢里的图标（点击打开）",
+                                   action: nil, keyEquivalent: "")
+            title.isEnabled = false
+            m.addItem(title)
+            for it in drawer {
+                let app = NSRunningApplication(processIdentifier: it.pid)
+                let name = it.title.isEmpty ? (app?.localizedName ?? "pid \(it.pid)") : it.title
+                let mi = NSMenuItem(title: name,
+                                    action: #selector(openDrawerApp(_:)), keyEquivalent: "")
+                mi.target = self
+                mi.representedObject = Int(it.pid)
+                mi.image = app?.icon
+                m.addItem(mi)
+            }
+        }
+
+        m.addItem(.separator())
+
         let toggle = NSMenuItem(title: isCollapsed ? "展开抽屉 Expand Drawer" : "收起抽屉 Tuck Icons",
                                 action: #selector(toggleFromMenu), keyEquivalent: "")
         toggle.target = self
@@ -202,6 +245,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleFromMenu() { isCollapsed ? expand() : collapse() }
+
+    @objc private func openDrawerApp(_ sender: NSMenuItem) {
+        guard let pid = sender.representedObject as? Int,
+              let app = NSRunningApplication(processIdentifier: pid_t(pid)) else { return }
+        app.activate()
+    }
 
     @objc private func toggleLaunchAtLogin() {
         let service = SMAppService.mainApp
