@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build Nest.app without a full Xcode installation.
+# Build Aerie.app without a full Xcode installation.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -7,21 +7,21 @@ echo "▸ swift build (release)"
 swift build -c release
 
 BIN=$(swift build -c release --show-bin-path)
-APP_DIR="build/Nest.app"
+APP_DIR="build/Aerie.app"
 
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
-cp "$BIN/Nest" "$APP_DIR/Contents/MacOS/Nest"
+cp "$BIN/Aerie" "$APP_DIR/Contents/MacOS/Aerie"
 
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleExecutable</key><string>Nest</string>
-    <key>CFBundleIdentifier</key><string>com.nest.menubar</string>
-    <key>CFBundleName</key><string>Nest</string>
-    <key>CFBundleDisplayName</key><string>Nest</string>
+    <key>CFBundleExecutable</key><string>Aerie</string>
+    <key>CFBundleIdentifier</key><string>com.aerie.menubar</string>
+    <key>CFBundleName</key><string>Aerie</string>
+    <key>CFBundleDisplayName</key><string>Aerie</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>

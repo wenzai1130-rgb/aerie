@@ -5,7 +5,7 @@ import ApplicationServices
 ///
 /// Every running process exposes its status items through the
 /// `AXExtrasMenuBar` attribute of its application element.
-/// Nest uses this to:
+/// Aerie uses this to:
 ///  - snapshot the original layout (so we can always restore it),
 ///  - list icons for the panic "restore menu bar" action,
 ///  - watch tucked-away icons for attention (BlinkWatcher).

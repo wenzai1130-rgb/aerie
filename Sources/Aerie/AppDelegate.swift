@@ -49,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func configureHandleButton() {
         guard let b = handleItem.button else { return }
-        b.image = NSImage(systemSymbolName: "bird", accessibilityDescription: "Nest")
+        b.image = NSImage(systemSymbolName: "bird", accessibilityDescription: "Aerie")
         b.image?.size = NSSize(width: 18, height: 18)
         b.target = self
         b.action = #selector(handleClicked)
@@ -59,7 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateHandleIcon() {
         guard let b = handleItem.button else { return }
         let symbol = isCollapsed ? "bird.fill" : "bird"
-        b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Nest")
+        b.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Aerie")
         b.image?.size = NSSize(width: 18, height: 18)
     }
 
@@ -75,7 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Tuck the drawer: widen the invisible wall so every icon left
     /// of it slides out of the visible bar. Icons are never moved by
-    /// Nest itself — the wall simply grows, and macOS tucks them away.
+    /// Aerie itself — the wall simply grows, and macOS tucks them away.
     private func collapse() {
         guard !isCollapsed else { return }
         refreshDrawerAndWatcher()
@@ -121,7 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watcher.start(watched: drawerItems)
     }
 
-    /// Nest owns two status items: the bird (has an image → wider)
+    /// Aerie owns two status items: the bird (has an image → wider)
     /// and the invisible drawer wall (narrow). Pick the narrow one.
     private func findImposter(in items: [MenuBarItem]) -> MenuBarItem? {
         let mine = items.filter { $0.pid == getpid() }
@@ -177,7 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         m.addItem(.separator())
 
-        let quit = NSMenuItem(title: "退出 Nest Quit", action: #selector(quit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "退出 Aerie Quit", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         m.addItem(quit)
 

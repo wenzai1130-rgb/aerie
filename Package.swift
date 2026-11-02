@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "Nest",
+    name: "Aerie",
     platforms: [.macOS(.v13)],
     targets: [
         .executableTarget(
-            name: "Nest",
-            path: "Sources/Nest"
+            name: "Aerie",
+            path: "Sources/Aerie"
         )
     ]
 )

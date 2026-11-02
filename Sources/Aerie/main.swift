@@ -1,7 +1,7 @@
 import AppKit
 
-// Nest — The menu bar nest. Icons you tuck in stay tucked;
-// everything else is never touched.
+// Aerie — the aerie at the top of your screen.
+// Icons you tuck in stay tucked; everything else is never touched.
 
 let app = NSApplication.shared
 let delegate = AppDelegate()
