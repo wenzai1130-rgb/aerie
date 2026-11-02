@@ -1,70 +1,56 @@
-# Aerie
+# Aerie 🐦 *(archived)*
 
-**The aerie at the top of your screen.** 🐦
+> **The aerie at the top of your screen** — a macOS menu bar manager that
+> never touches what you keep visible.
 
-A menu bar manager for macOS built on a simple promise: **your menu bar is not Aerie's to rearrange.** Install it, and nothing changes. Tuck only the icons you don't need into the aerie — the rest (your messaging apps, reminders, anything you care about) stays exactly where it is, permanently visible.
+**Status: archived.** Aerie worked as designed on macOS 13–15, but macOS 26
+(Tahoe) redesigned the menu bar in a way that removes every mechanism
+third-party hiders relied on. This repository is kept as a field report of
+what we measured, so the next person doesn't have to spend a day
+re-discovering it. On macOS 26+, use the built-in
+**System Settings → Menu Bar → "Allow in the Menu Bar"** per-app toggles —
+that is now the only reliable way to hide menu bar icons, and it's official.
 
-An *aerie* is the nest of a bird of prey, built high on a cliff ledge. Your menu bar is that ledge; your icons are the birds perched on it. Aerie just decides who stays out in the open and who rests inside.
+---
 
-## Why another menu bar manager?
+## What Aerie tried, and what macOS 26 actually allows
 
-Because every existing one betrays you the same way:
+We verified each mechanism empirically on macOS 26.5 (probe app + screen
+captures), not by reading blog posts:
 
-| The usual experience | Aerie's answer |
+| Mechanism | Result on macOS 26.5 |
 |---|---|
-| Take over and collapse *everything* on first launch | **Zero changes by default.** Only icons you explicitly tuck are hidden |
-| A separator whose "hidden" side points the *wrong* way | One rule: **⌘-drag left of the wall = tucked**. That's it |
-| Icons shoved off-screen and "forgotten", even after quitting | Quitting or restoring always **puts every icon back** |
-| No story for messages | **Flap detection**: when a tucked icon's accessibility label changes (new message, new event…), Aerie pops the drawer open for 5 seconds, then quietly tucks it back |
+| Move/resize another app's status item via Accessibility (`AXUIElementSetAttributeValue` on position/size) | ❌ Rejected for **every** item with `kAXErrorCannotComplete` (-25200); `AXUIElementIsAttributeSettable` reports *not settable* for all |
+| Widen your own `NSStatusItem` to push neighbours off-screen (the Hidden Bar / Ice / Dozer trick) | ❌ The wide item simply extends leftward and clips *itself*; neighbours don't move (verified by before/after screen captures) |
+| Write `NSStatusItem Visible <key>` into `com.apple.controlcenter` defaults | ❌ No effect observed immediately, even after restarting ControlCenter |
+| Read the menu bar via `AXExtrasMenuBar` | ✅ Still works (slow; set `AXUIElementSetMessagingTimeout`) |
+| System-wide AX hit test on menu bar coordinates | ✅ Works |
+| AX notifications (`AXObserver` + value/title change) for "message arrived" detection | ✅ Works |
 
-## Requirements
+Other quirks we hit, in case you are debugging the same things:
 
-- macOS 13 (Ventura) or later
-- Accessibility permission (for flap detection & layout restore). Tucking itself needs no permissions at all.
+- On macOS 26 **all status-item windows are owned by the ControlCenter
+  process**, not by the app that created them — window-list-based detection
+  by pid does not work.
+- AX-reported positions of menu bar items can be **stale/wrong** (an icon
+  visibly at x≈1250 reported at x=-48). Never trust AX geometry for hit
+  testing; use `AXUIElementCopyElementAtPosition` instead.
+- Ad-hoc signed helper apps can lose their Accessibility trust after each
+  rebuild; a stable signing identity avoids re-authorising constantly.
+- macOS 26's System Settings gained per-app **"Allow in the Menu Bar"**
+  toggles for third-party icons — the platform's answer to this whole
+  category of tools.
 
-## Build
+## The v0.1–v0.2 design (still instructive)
 
-No Xcode required — Command Line Tools + Swift Package Manager are enough:
-
-```bash
-./scripts/build.sh
-# → build/Aerie.app
-```
-
-Or grab a build from [Releases](../../releases).
-
-## Usage
-
-1. Launch Aerie. A small **bird** appears in your menu bar.
-2. Hold **⌘** and drag the icons you *don't* need to the **left of the invisible wall** (it sits just left of the bird).
-3. **Click the bird** → the wall widens and tucked icons slide out of sight. Click again → they come back.
-4. While tucked, if one of them gets a message, **the aerie opens by itself** for 5 seconds. The bird icon switches from 🐦 to a filled one while the drawer is closed.
-
-Right-click the bird for the menu:
-
-- **展开抽屉 / Tuck Icons** — toggle the drawer
-- **登录时启动 / Launch at Login**
-- **恢复菜单栏布局 / Restore Layout** — panic button: puts every icon back to where it was when Aerie launched
-- **退出 / Quit** — always restores the layout first
-
-## FAQ
-
-**I tucked an icon and can't find it.**
-Click the bird. Tucked icons live left of the wall. If the bird itself went missing, log out and back in — Aerie never pushes icons into positions apps remember as broken.
-
-**Does Aerie move my icons?**
-Almost never. Tucking works by widening Aerie's own invisible wall; your icons simply run out of room. Aerie only touches icon positions when you use *Restore Layout*, and then it puts them back to the snapshot taken at launch.
-
-**Why does the drawer open by itself?**
-Flap detection heard a tucked icon update its label — usually a new message or event. It closes again after 5 seconds.
-
-## Roadmap
-
-- [ ] Floating panel mode (notch-friendly)
-- [ ] Per-app rules (auto-tuck on launch)
-- [ ] Global hotkey
-- [ ] Menu bar spacing tweaks
+- **Whitelist philosophy**: install changes nothing; only icons you
+  explicitly tuck are affected.
+- **Explicit restore**: quitting always returned every icon; no stranded
+  off-screen items, ever.
+- **BlinkWatcher**: AX observers on tucked icons revealed the drawer for 5 s
+  when an icon's label changed (i.e. a message arrived) — the one feature
+  that still works on macOS 26 and that no shipping tool does well.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT

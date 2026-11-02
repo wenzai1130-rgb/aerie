@@ -4,9 +4,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 echo "▸ swift build (release)"
-swift build -c release
+swift build -c release --disable-sandbox
 
-BIN=$(swift build -c release --show-bin-path)
+BIN=$(swift build -c release --disable-sandbox --show-bin-path)
 APP_DIR="build/Aerie.app"
 
 rm -rf "$APP_DIR"

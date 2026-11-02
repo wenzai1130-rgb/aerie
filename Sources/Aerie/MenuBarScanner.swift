@@ -23,10 +23,15 @@ enum MenuBarScanner {
     static func allItems() -> [MenuBarItem] {
         var result: [MenuBarItem] = []
         let apps = NSWorkspace.shared.runningApplications.filter {
-            $0.activationPolicy == .regular || $0.bundleIdentifier?.hasPrefix("com.apple") == true
+            // Include ourselves: as an LSUIElement app we are .accessory,
+            // yet our bird/wall items are exactly what we need to see.
+            $0.activationPolicy == .regular
+                || $0.processIdentifier == getpid()
+                || $0.bundleIdentifier?.hasPrefix("com.apple") == true
         }
         for app in apps {
             let appElement = AXUIElementCreateApplication(app.processIdentifier)
+            AXUIElementSetMessagingTimeout(appElement, 0.5)
             guard let barRef = element(appElement, kAXExtrasMenuBarAttribute),
                   CFGetTypeID(barRef) == AXUIElementGetTypeID() else { continue }
             let bar = barRef as! AXUIElement
@@ -48,6 +53,65 @@ enum MenuBarScanner {
             }
         }
         return result.sorted { $0.position.x < $1.position.x }
+    }
+
+    /// One-shot probe: is the Accessibility API usable at all?
+    /// .apiDisabled (-25211) means macOS revoked/never granted trust.
+    static func diagnose() {
+        let sysWide = AXUIElementCreateSystemWide()
+        var value: CFTypeRef?
+        let err = AXUIElementCopyAttributeValue(sysWide, "AXFocusedApplication" as CFString, &value)
+        NSLog("[Aerie][诊断] AXIsProcessTrusted=%@ AX 探针错误码=%d (%@)",
+              Permissions.hasAccessibility ? "true" : "false",
+              err.rawValue,
+              err == .success ? "正常" : err == .apiDisabled ? "⚠️ 无辅助功能权限" : "其他错误")
+        // Keep every AX call snappy — a hung app must not stall the event tap.
+        AXUIElementSetMessagingTimeout(sysWide, 0.5)
+    }
+
+    /// Debug: dump everything we can see in the menu bar.
+    static func dumpItems() {
+        let t0 = Date()
+        let items = allItems()
+        NSLog("[Aerie][dump] 共 %d 项，耗时 %.2fs（本进程 pid=%d）", items.count, Date().timeIntervalSince(t0), getpid())
+        for it in items {
+            NSLog("[Aerie][dump]   pid=%-6d x=%7.0f y=%4.0f w=%5.0f h=%4.0f  title=%@",
+                  it.pid, it.position.x, it.position.y, it.size.width, it.size.height, it.title)
+        }
+    }
+
+    /// Diagnostic: for every menu bar item, try a no-op write to the
+    /// position and size attributes and report the AX error code.
+    /// This tells us whether macOS 26 lets third-party apps move or
+    /// hide *other* apps' status items at all.
+    static func probeWritability() {
+        let items = allItems()
+        NSLog("[Aerie][probe] 共 %d 项，本进程 pid=%d", items.count, getpid())
+        for it in items {
+            var p = it.position
+            let posValue = AXValueCreate(.cgPoint, &p)
+            let ePos = posValue.map {
+                AXUIElementSetAttributeValue(it.element, kAXPositionAttribute as CFString, $0).rawValue
+            } ?? -999
+            var s = it.size
+            let sizeValue = AXValueCreate(.cgSize, &s)
+            let eSize = sizeValue.map {
+                AXUIElementSetAttributeValue(it.element, kAXSizeAttribute as CFString, $0).rawValue
+            } ?? -999
+            var posSettable = DarwinBoolean(false)
+            AXUIElementIsAttributeSettable(it.element, kAXPositionAttribute as CFString, &posSettable)
+            var sizeSettable = DarwinBoolean(false)
+            AXUIElementIsAttributeSettable(it.element, kAXSizeAttribute as CFString, &sizeSettable)
+            let role = string(it.element, kAXRoleAttribute) ?? "?"
+            let sub = string(it.element, kAXSubroleAttribute) ?? "?"
+            NSLog("[Aerie][probe] pid=%-6d x=%6.0f y=%4.0f w=%4.0f setPos=%d setSize=%d posOK=%@ sizeOK=%@ role=%@/%@ title=%@",
+                  it.pid, it.position.x, it.position.y, it.size.width,
+                  ePos, eSize,
+                  posSettable.boolValue ? "Y" : "N",
+                  sizeSettable.boolValue ? "Y" : "N",
+                  role, sub,
+                  it.title.isEmpty ? "(空)" : it.title)
+        }
     }
 
     // MARK: - AX helpers
@@ -100,6 +164,66 @@ enum MenuBarScanner {
     static func setPosition(_ el: AXUIElement, _ p: CGPoint) -> Bool {
         var point = p
         guard let value = AXValueCreate(.cgPoint, &point) else { return false }
-        return AXUIElementSetAttributeValue(el, kAXPositionAttribute as CFString, value) == .success
+        let err = AXUIElementSetAttributeValue(el, kAXPositionAttribute as CFString, value)
+        if err != .success { NSLog("[Aerie][AX] setPosition 失败 err=%d", err.rawValue) }
+        return err == .success
+    }
+
+    @discardableResult
+    static func setSize(_ el: AXUIElement, _ s: CGSize) -> Bool {
+        var size = s
+        guard let value = AXValueCreate(.cgSize, &size) else { return false }
+        let err = AXUIElementSetAttributeValue(el, kAXSizeAttribute as CFString, value)
+        if err != .success { NSLog("[Aerie][AX] setSize 失败 err=%d", err.rawValue) }
+        return err == .success
+    }
+
+    static func parent(of el: AXUIElement) -> AXUIElement? {
+        guard let ref = element(el, kAXParentAttribute),
+              CFGetTypeID(ref) == AXUIElementGetTypeID() else { return nil }
+        return ref as! AXUIElement
+    }
+
+    /// Debug: print the role chain from this element up to the app.
+    static func logRoleChain(_ el: AXUIElement, tag: String) {
+        var current = el
+        for depth in 0..<5 {
+            let role = string(current, kAXRoleAttribute) ?? "?"
+            let subrole = string(current, kAXSubroleAttribute) ?? "?"
+            let desc = string(current, kAXDescriptionAttribute) ?? ""
+            NSLog("[Aerie][链][%@] #%d role=%@ subrole=%@ desc=%@", tag, depth, role, subrole, desc)
+            guard let p = parent(of: current) else { break }
+            current = p
+        }
+    }
+
+    /// System-wide hit test: which accessibility element lives at this
+    /// screen point? immune to stale reported positions — the system
+    /// resolves the element for us. Normalized to the direct child of
+    /// a menu bar (the status item itself).
+    static func hitTest(at p: CGPoint) -> AXUIElement? {
+        let sysWide = AXUIElementCreateSystemWide()
+        var el: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(sysWide, Float(p.x), Float(p.y), &el) == .success,
+              let hit = el else { return nil }
+        return normalizeToMenuBarItem(hit)
+    }
+
+    /// Climb parents until `current` is a direct child of an AXMenuBar
+    /// (the extras menu bar counts as one), so we operate on the item
+    /// itself rather than an inner button/image.
+    private static func normalizeToMenuBarItem(_ el: AXUIElement) -> AXUIElement {
+        var current = el
+        for _ in 0..<6 {
+            guard let parentRef = element(current, kAXParentAttribute),
+                  CFGetTypeID(parentRef) == AXUIElementGetTypeID() else { break }
+            let parent = parentRef as! AXUIElement
+            guard string(parent, kAXRoleAttribute) == "AXMenuBar" else {
+                current = parent
+                continue
+            }
+            break
+        }
+        return current
     }
 }
