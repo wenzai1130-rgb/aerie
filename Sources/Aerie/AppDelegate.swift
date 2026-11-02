@@ -29,9 +29,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureHandleButton()
 
         imposterItem = NSStatusBar.system.statusItem(withLength: imposterRestingWidth)
-        imposterItem.button?.title = ""
+        if let b = imposterItem.button {
+            b.image = Self.wallImage()
+            b.image?.size = NSSize(width: 5, height: 18)
+            b.accessibilityLabel = "Aerie wall"
+        }
 
-        placeImposterLeftOfHandle()
         refreshDrawerAndWatcher()
 
         if !Permissions.hasAccessibility {
@@ -64,7 +67,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func handleClicked() {
-        if NSApp.currentEvent?.type == .rightMouseUp {
+        let type = NSApp.currentEvent?.type ?? .leftMouseUp
+        if type == .rightMouseUp {
             showMenu()
         } else {
             isCollapsed ? expand() : collapse()
@@ -127,6 +131,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let mine = items.filter { $0.pid == getpid() }
         guard mine.count >= 2 else { return nil }
         return mine.min { $0.size.width < $1.size.width }
+    }
+
+    /// A short visible line so the wall can be seen and ⌘-dragged.
+    private static func wallImage() -> NSImage {
+        let img = NSImage(size: NSSize(width: 5, height: 18))
+        img.lockFocus()
+        NSColor.secondaryLabelColor.setFill()
+        NSBezierPath(roundedRect: NSRect(x: 1.5, y: 2, width: 2, height: 14), xRadius: 1, yRadius: 1).fill()
+        img.unlockFocus()
+        img.isTemplate = true
+        return img
     }
 
     /// On first launch, slide the wall just left of the bird so the
